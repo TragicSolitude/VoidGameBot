@@ -1,0 +1,17 @@
+[package]
+name = "void_game_bot_ws"
+version = "0.1.0"
+authors = ["Noah Shuart <shuart.noah@gmail.com>"]
+
+[dependencies]
+libloading = "0.4"
+regex = "0.2"
+
+[dependencies.discord]
+git = "https://github.com/SpaceManiac/discord-rs"
+
+[dependencies.common_void]
+path = "lib/common_void"
+
+[workspace]
+members = ["lib/*"]

@@ -1,0 +1,12 @@
+[package]
+name = "command_test"
+version = "0.1.0"
+authors = ["Noah Shuart <shuart.noah@gmail.com>"]
+
+[dependencies]
+
+[dependencies.discord]
+git = "https://github.com/SpaceManiac/discord-rs"
+
+[lib]
+crate-type = ["dylib"]
