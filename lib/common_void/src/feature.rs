@@ -1,0 +1,3 @@
+// 32-bit bitmasks just in case :)
+pub const NONE: u32     = 0b00000000000000000000000000000000;
+pub const TEST: u32     = 0b00000000000000000000000000000001;
