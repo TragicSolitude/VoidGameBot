@@ -9,7 +9,7 @@ use std::{env, fs};
 use std::collections::HashMap;
 use platform::Platform;
 use discord::Discord;
-use discord::model::Event;
+use discord::model::{Event, Message};
 
 fn main() {
     let plugins = fs::read_dir("plugins/").unwrap();
@@ -33,19 +33,27 @@ fn main() {
     let discord = Discord::from_bot_token(
         &env::var("VOIDGAMEBOT_TOKEN").expect("No token found in env:VOIDGAMEBOT_TOKEN.")
     ).expect("Login with given bot token failed.");
+    // This errors out for some reason... Do bots not have a UserProfile/UserId?
+    let bot_id = discord.get_current_user().unwrap().id;
 
     let (mut connection, _) = discord.connect().expect("Failed to connect.");
     println!("Connected.");
     loop {
         match connection.recv_event() {
             Ok(Event::MessageCreate(message)) => {
-                println!("Received message: {}", message.content);
+                if message.content.chars().nth(0).unwrap() != '!' ||
+                    message.author.id == bot_id {
+                    return;
+                }
+
+                println!("[REC]         {}", message.content);
 
                 let mut opts = message.content.split_whitespace();
                 let command = opts.next().unwrap();
+                let command = &command[1..command.len()];
                 let key = format!("{}{}", "libcommand_", command);
 
-                println!("Command extracted: {}; Checking for key {}...", command, key);
+                println!("[REQ; KEY]    {}; {}", command, key);
 
                 if libs.contains_key(&key) {
                     let mut args: Vec<String> = Vec::new();
@@ -54,13 +62,27 @@ fn main() {
                         args.push(opt.to_string());
                     }
 
+                    println!("[EXE; ARG]    [{}]", args.join(", "));
+
                     let lib = libs.get(&key).unwrap();
-                    let func: Symbol<extern fn(Vec<String>) -> u8> = unsafe {
+                    let func: Symbol<extern fn(&Discord, &Message, Vec<String>) -> u8> = unsafe {
                         lib.get(b"main").unwrap()
                     };
-                    func(args);
+                    let res = func(&discord, &message, args);
+
+                    if res != 0 {
+                        discord.send_message(
+                            message.channel_id,
+                            &format!("[ERR]     {}", res),
+                            "",
+                            false
+                        ).unwrap();
+                    } else {
+                        println!("[SUC]");
+                    }
                 } else {
                     // TODO Check for lib and load it here
+                    println!("[MIS]");
                 }
                 
             }
