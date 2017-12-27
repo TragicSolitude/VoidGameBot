@@ -1,18 +1,23 @@
 extern crate libloading;
 extern crate regex;
 extern crate discord;
+extern crate common_void;
 
 mod platform;
+mod plugin;
 
 use libloading::{Library, Symbol};
 use std::{env, fs};
 use std::collections::HashMap;
+use std::error::Error;
 use discord::Discord;
-use discord::model::{Event, Message, UserId};
+use discord::model::{Event, Message, UserId, ChannelId, ServerId, VoiceState};
+use plugin::Plugin;
+use common_void::hook;
 
 fn main() {
     let plugins = fs::read_dir("plugins/").unwrap();
-    let mut libs: HashMap<String, Library> = HashMap::new();
+    let mut libs: HashMap<String, Plugin> = HashMap::new();
 
     for plugin in plugins {
         let plugin = plugin.unwrap();
@@ -24,8 +29,9 @@ fn main() {
         key.truncate(len - 3);
 
         let lib = Library::new(plugin.path()).unwrap();
+
         // TODO Use describe function for getting feature usage
-        libs.insert(key, lib);
+        libs.insert(key, Plugin::new(lib));
     }
     
     let discord = Discord::from_bot_token(
@@ -63,7 +69,7 @@ fn main() {
 
                     let lib = libs.get(&key).unwrap();
                     let func: Symbol<extern fn(&Discord, &Message, Vec<String>) -> u8> = unsafe {
-                        lib.get(b"main").unwrap()
+                        lib.link.get(b"main").unwrap()
                     };
                     // TODO Try out futures/threading to improve performance for
                     // potentially long-running commands
@@ -84,6 +90,36 @@ fn main() {
                     println!("[MIS]");
                 }
                 
+            }
+            Ok(Event::VoiceStateUpdate(server_id, state)) => {
+                println!("[VSU]");
+                for lib in libs.values() {
+                    if lib.description & hook::VOICE_STATE_UPDATE != 0 {
+                        let hook: std::io::Result<Symbol<extern fn(&ServerId, &VoiceState) -> u8>> = unsafe {
+                            lib.link.get(b"hook_voice_state_update")
+                        };
+
+                        match hook {
+                            Ok(function) => {
+                                let res = function(&server_id.unwrap(), &state);
+
+                                if res > 0 {
+                                    println!("[VSU; ERR]    {}", res);
+                                } else {
+                                    println!("[VSU; SUC]");
+                                }
+                            }
+                            Err(err) => {
+                                println!("[VSU; ERR]    dll--{}", err.description().to_string());
+                            }
+                        };
+                    }
+                }
+
+                println!("[VSU]         {}", match state.channel_id {
+                    Some(channel_id) => channel_id,
+                    None => ChannelId(0)
+                });
             }
             // TODO Create hooks that libs can attach to (call some kind of
             // descriptor function when loading the lib?) for different events
