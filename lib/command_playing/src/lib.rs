@@ -8,12 +8,12 @@ mod managed_channel;
 use std::sync::Mutex;
 use std::collections::HashMap;
 use discord::Discord;
-use discord::model::{Message, ServerId, VoiceState, ChannelId, UserId};
+use discord::model::{Message, ServerId, VoiceState, ChannelId, UserId, Channel, ChannelType};
 use common_void::{feature, hook};
 use managed_channel::ManagedChannel;
 
-// How should I init these kind of things?
 lazy_static! {
+    // TODO Setup periodic flush to a file in case of sudden shutdown
     static ref CHANNELS: Mutex<HashMap<ChannelId, ManagedChannel>> = Mutex::new(HashMap::new());
     static ref CHANNEL_CURSTATE: Mutex<HashMap<UserId, ChannelId>> = Mutex::new(HashMap::new());
 }
@@ -35,6 +35,13 @@ pub extern fn describe() -> u32 {
 /// `100` - Invalid argument count
 /// `200` - Error locking channels map
 /// `201` - Error locking prev_channels map
+/// `300` - User state unknown
+/// `400` - Could not create channel
+/// `401` - Could not get channel info
+/// `402` - User channel not accessible
+/// `403` - Wrong channel type created
+/// `404` - Channel not found -- wow how funny am I a 404 joke /s
+/// `500` - Could not move user into channel
 ///
 /// # Arguments
 /// Standard VGB plugin arguments
@@ -43,32 +50,104 @@ pub extern fn describe() -> u32 {
 /// * `message` - A reference to the received message instance
 /// * `args`    - A vector of all parameters specified for the command
 #[no_mangle]
-pub extern fn main(discord: &Discord, message: &Message, args: Vec<String>) -> u8 {
+pub extern fn main(discord: &Discord, message: &Message, args: Vec<String>) -> u16 {
     if args.len() < 1 {
         return 100;
     }
 
-    let lock = match CHANNELS.lock() {
+    let mut lock = match CHANNELS.lock() {
         Ok(channels) => channels,
         Err(_) => return 200
     };
+    let state = match CHANNEL_CURSTATE.lock() {
+        Ok(state) => state,
+        Err(_) => return 201
+    };
+    let server_id: ServerId;
 
-    // TODO Check to see if user is in a public voice channel
+    println!("[CMD; PLY]    Message from User ID: {}", message.author.id);
 
-    let mut matching: Option<&ManagedChannel> = None;
+    // Figure out what server the user is in
+    match state.get(&message.author.id) {
+        Some(channel_id) => {
+            match discord.get_channel(*channel_id) {
+                Ok(Channel::Public(channel)) => {
+                    server_id = channel.server_id
+                },
+                Ok(_) => {
+                    println!("[ERR; PLY]   User is not in a public channel");
+                    return 402;
+                }
+                Err(err) => {
+                    println!("[ERR; PLY]   Error getting channel info; {:?}", err);
+                    return 401;
+                }
+            }
+        }
+        None => return 300
+    }
+
+    // Check if they are in a managed channel already
+    let mut is_managed = false;
     for channel in lock.values() {
         if channel.name == args[0] {
-           matching = Some(channel);
-           break;
+            is_managed = true;
+            break;
         }
     }
 
-    match matching {
-        Some(managed_channel) => {
-            println!("[CMD; PLY]    {}", "Existing channel");
+    let mut channel_id: Option<ChannelId> = None;
+
+    if is_managed {
+        println!("[CMD; PLY]    {}", "Existing channel");
+        
+        // Have to repeat this shit to prevent borrowing lifetime problems
+        let mut matching: Option<&ManagedChannel> = None;
+        for channel in lock.values() {
+            if channel.name == args[0] {
+                matching = Some(channel);
+                break;
+            }
+        }
+
+        match matching {
+            Some(channel) => channel_id = Some(channel.id),
+            None => {}
+        }
+
+        // TODO Move user
+    } else {
+        println!("[CMD; PLY]    {}", "New Channel");
+
+        match discord.create_channel(server_id, &args[0], ChannelType::Voice) {
+            Ok(Channel::Public(channel)) => {
+                lock.insert(channel.id, ManagedChannel::new(channel.id, args[0].to_owned()));
+                channel_id = Some(channel.id);
+            },
+            Ok(_) => {
+                println!("[ERR; PLY]    Incorrect channel type created");
+                return 403
+            }
+            Err(err) => {
+                println!("[ERR; PLY]    Could not create channel; {:?}", err);
+                return 400;
+            }
+        }
+    }
+
+    match channel_id {
+        Some(channel_id) => {
+            match discord.move_member_voice(server_id, message.author.id, channel_id) {
+                Ok(_) => {}
+                Err(err) => {
+                    println!("[ERR; PLY]    Error moving user to channel; {:?}", err);
+                    return 405;
+                }
+            }
         }
         None => {
-            println!("[CMD; PLY]    {}", "New Channel");
+            println!("[ERR; PLY]   No channel to move user to");
+            return 404;
         }
     }
 
@@ -77,39 +156,75 @@ pub extern fn main(discord: &Discord, message: &Message, args: Vec<String>) -> u
 
 /// Hooks into the VOICE_STATE_UPDATE event 
 #[no_mangle]
-pub extern fn hook_voice_state_update(server_id: &ServerId, state: &VoiceState) -> u8 {
+pub extern fn hook_voice_state_update(discord: &Discord, _server_id: &ServerId, new_state: &VoiceState) -> u16 {
     let mut lock = match CHANNELS.lock() {
         Ok(channels) => channels,
         Err(_) => return 200
     };
-    let mut prev = match CHANNEL_CURSTATE.lock() {
-        Ok(prev) => prev,
+    let mut state = match CHANNEL_CURSTATE.lock() {
+        Ok(state) => state,
         Err(_) => return 201
     };
-    let state_channel_id = match state.channel_id {
+    let new_channel_id = match new_state.channel_id {
         Some(id) => id,
         None => ChannelId(0)
     };
 
-    match prev.get(&state.user_id) {
-        Some(channel_id) => {
-            if state_channel_id != *channel_id {
-                match lock.get_mut(channel_id) {
+    match state.get(&new_state.user_id) {
+        Some(cur_channel_id) => {
+            println!("New channelid: {} -- old channelid: {}", new_channel_id, *cur_channel_id);
+            if new_channel_id != *cur_channel_id {
+                // User changed channels, we don't care about self mute and other
+                // voice state updates
+
+                println!("[VSU; PLY]    User changed from channel {} to channel {}", *cur_channel_id, new_channel_id);
+
+                let mut is_empty = false;
+
+                match lock.get_mut(cur_channel_id) {
                     Some(channel) => {
-                        channel.users.remove(&state.user_id);
+                        if channel.users.len() < 2 {
+                            is_empty = true;
+                        } else {
+                            channel.users.remove(&new_state.user_id);
+                        }
                     }
                     None => {
-                        // Do something if user doesn't exist here?
+                        // Not a managed channel
+                        println!("[VSU; PLY]    Channel {} not managed", *cur_channel_id);
                     }
                 };
+
+                if is_empty {
+                    // No users left, delete channel
+
+                    match discord.delete_channel(*cur_channel_id) {
+                        Ok(_) => {
+                            lock.remove(cur_channel_id);
+                        }
+                        Err(err) => println!("[ERR; PLY]    VSU--Could not delete channel; {:?}", err)
+                    }
+
+                }
             }
         },
         None => {
-            prev.insert(state.user_id, state_channel_id);
+            // Not currently tracking user
         }
     };
 
-    // Delete managed channels with nobody in them
+    state.insert(new_state.user_id, new_channel_id);
 
-    0
+    match lock.get_mut(&new_channel_id) {
+        Some(channel) => {
+            // User moved into managed channel; add to channel user list
+            
+            channel.users.insert(new_state.user_id);
+        }
+        None => {
+            // User moved somewhere we don't care about; do nothing
+        }
+    }
+
+    0 // Successful
 }

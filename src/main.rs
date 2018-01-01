@@ -3,15 +3,13 @@ extern crate regex;
 extern crate discord;
 extern crate common_void;
 
-mod platform;
 mod plugin;
 
 use libloading::{Library, Symbol};
 use std::{env, fs};
 use std::collections::HashMap;
-use std::error::Error;
 use discord::Discord;
-use discord::model::{Event, Message, UserId, ChannelId, ServerId, VoiceState};
+use discord::model::{Event, Message, ServerId, VoiceState};
 use plugin::Plugin;
 use common_void::hook;
 
@@ -30,7 +28,6 @@ fn main() {
 
         let lib = Library::new(plugin.path()).unwrap();
 
-        // TODO Use describe function for getting feature usage
         libs.insert(key, Plugin::new(lib));
     }
     
@@ -40,7 +37,12 @@ fn main() {
     // get_current_user() does not work due to a bug in discord-rs crate
     // let bot_id = discord.get_current_user().unwrap().id;
 
+    // TODO setup interval feature
+    // Like a hook but just one that gets called on an interval with no params
+    // Useful for implementing something like a periodic buffer flush to file
+
     let (mut connection, _) = discord.connect().expect("Failed to connect.");
+
     println!("Connected.");
     loop {
         match connection.recv_event() {
@@ -68,9 +70,10 @@ fn main() {
                     println!("[EXE; ARG]    {}; [{}]", command, args.join(", "));
 
                     let lib = libs.get(&key).unwrap();
-                    let func: Symbol<extern fn(&Discord, &Message, Vec<String>) -> u8> = unsafe {
+                    let func: Symbol<extern fn(&Discord, &Message, Vec<String>) -> u16> = unsafe {
                         lib.link.get(b"main").unwrap()
                     };
+
                     // TODO Try out futures/threading to improve performance for
                     // potentially long-running commands
                     let res = func(&discord, &message, args);
@@ -80,7 +83,9 @@ fn main() {
                         println!("{}", msg);
                         match discord.send_message(message.channel_id, &format!("`{}`", msg), "", false) {
                             Ok(_) => {},
-                            Err(_) => println!("[ERR]!        Could not notify channel")
+                            Err(err) => {
+                                println!("[ERR]!        Could not notify channel; {:?}", err)
+                            }
                         };
                     } else {
                         println!("[SUC]");
@@ -92,16 +97,16 @@ fn main() {
                 
             }
             Ok(Event::VoiceStateUpdate(server_id, state)) => {
-                println!("[VSU]");
+                // TODO make hook system more re-usable for other types of events
                 for lib in libs.values() {
                     if lib.description & hook::VOICE_STATE_UPDATE != 0 {
-                        let hook: std::io::Result<Symbol<extern fn(&ServerId, &VoiceState) -> u8>> = unsafe {
+                        let hook: std::io::Result<Symbol<extern fn(&Discord, &ServerId, &VoiceState) -> u16>> = unsafe {
                             lib.link.get(b"hook_voice_state_update")
                         };
 
                         match hook {
                             Ok(function) => {
-                                let res = function(&server_id.unwrap(), &state);
+                                let res = function(&discord, &server_id.unwrap(), &state);
 
                                 if res > 0 {
                                     println!("[VSU; ERR]    {}", res);
@@ -110,19 +115,12 @@ fn main() {
                                 }
                             }
                             Err(err) => {
-                                println!("[VSU; ERR]    dll--{}", err.description().to_string());
+                                println!("[VSU; ERR]    dll--{:?}", err);
                             }
                         };
                     }
                 }
-
-                println!("[VSU]         {}", match state.channel_id {
-                    Some(channel_id) => channel_id,
-                    None => ChannelId(0)
-                });
             }
-            // TODO Create hooks that libs can attach to (call some kind of
-            // descriptor function when loading the lib?) for different events
             Ok(_) => {}
             Err(discord::Error::Closed(code, body)) => {
                 println!("Gateway closed with code {:?}: {}", code, body);

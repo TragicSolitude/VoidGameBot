@@ -4,6 +4,6 @@ pub extern fn describe() -> u32 {
 }
 
 #[no_mangle]
-pub extern fn main(asdf: Vec<String>) -> u8 {
+pub extern fn main(asdf: Vec<String>) -> u16 {
     0
 }

@@ -1,7 +1,6 @@
 extern crate libloading;
 
-use libloading::{Library, Symbol};
-use std::io::Result;
+use libloading::Library;
 
 /// 
 pub struct Plugin {
