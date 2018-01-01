@@ -172,7 +172,6 @@ pub extern fn hook_voice_state_update(discord: &Discord, _server_id: &ServerId, 
 
     match state.get(&new_state.user_id) {
         Some(cur_channel_id) => {
-            println!("New channelid: {} -- old channelid: {}", new_channel_id, *cur_channel_id);
             if new_channel_id != *cur_channel_id {
                 // User changed channels, we don't care about self mute and other
                 // voice state updates
