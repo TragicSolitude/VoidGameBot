@@ -1,4 +1,5 @@
 plugins := $(wildcard target/debug/*.so)
+releaseplugins := $(wildcard target/release/*.so)
 
 build:
 	cargo build --all
@@ -8,7 +9,7 @@ build:
 
 build-release:
 	cargo build --all --release
-	for path in $(plugins); do \
+	for path in $(releaseplugins); do \
 		cp $$path plugins/; \
 	done
 
