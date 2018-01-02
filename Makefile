@@ -17,4 +17,4 @@ run: build
 	cargo run
 
 run-release: build-release
-	cargo run
+	cargo run --release
