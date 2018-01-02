@@ -1,9 +1,0 @@
-[package]
-name = "command_test"
-version = "0.1.0"
-authors = ["Noah Shuart <shuart.noah@gmail.com>"]
-
-[dependencies]
-
-[lib]
-crate-type = ["dylib"]
