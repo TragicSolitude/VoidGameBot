@@ -64,10 +64,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "command_test"
-version = "0.1.0"
-
-[[package]]
 name = "common_void"
 version = "0.1.0"
 

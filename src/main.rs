@@ -47,8 +47,15 @@ fn main() {
     loop {
         match connection.recv_event() {
             Ok(Event::MessageCreate(message)) => {
-                if message.content.chars().nth(0).unwrap() != '!' {
-                    continue;
+                match message.content.chars().nth(0) {
+                    Some(character) => {
+                        if character != '!' {
+                            continue
+                        }
+                    }
+                    None => {
+                        continue;
+                    }
                 }
 
                 println!("[REC]         {}", message.content);
