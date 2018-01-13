@@ -5,16 +5,16 @@ use libloading::Library;
 /// 
 pub struct Plugin {
     pub link: Library,
-    pub description: u32
+    pub description: u64
 }
 
 impl Plugin {
     pub fn new(lib: Library) -> Plugin {
-        let plugin_desc: u32;
+        let plugin_desc: u64;
 
         {
             let option = unsafe {
-                lib.get::<extern fn() -> u32>(b"describe")
+                lib.get::<extern fn() -> u64>(b"describe")
             };
 
             plugin_desc = match option {

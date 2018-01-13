@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use discord::Discord;
 use discord::model::{Event, Message, ServerId, VoiceState};
 use plugin::Plugin;
-use common_void::hook;
+use common_void::{hook, filter};
 
 fn main() {
     let plugins = fs::read_dir("plugins/").unwrap();
@@ -61,8 +61,25 @@ fn main() {
                 println!("[REC]         {}", message.content);
 
                 let mut opts = message.content.split_whitespace();
-                let command = opts.next().unwrap();
-                let command = &command[1..command.len()];
+                let mut command = opts.next().unwrap();
+                command = &command[1..command.len()];
+                
+                let mut command = command.to_string();
+                for lib in libs.values() {
+                    if lib.description & filter::BEFORE_PLUGIN_LOOKUP != 0 {
+                        let filter: std::io::Result<Symbol<extern fn(String) -> String>> = unsafe {
+                            lib.link.get(b"filter_before_plugin_lookup")
+                        };
+
+                        match filter {
+                            Ok(function) => command = function(command),
+                            Err(err) => println!("[CMD; ERR]    dll--{:?}", err)
+                        };
+                    }
+                }
+                let command = &command;
+
+                // filter_before_plugin_lookup
                 let key = format!("{}{}", "libcommand_", command);
 
                 println!("[REQ; KEY]    {}; {}", command, key);

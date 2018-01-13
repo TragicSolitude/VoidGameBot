@@ -3,3 +3,4 @@
 
 pub mod feature;
 pub mod hook;
+pub mod filter;

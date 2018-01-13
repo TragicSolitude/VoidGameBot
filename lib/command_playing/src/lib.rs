@@ -21,7 +21,7 @@ lazy_static! {
 /// Plugin feature usage description; gets called at link-time and returns a
 /// bitmask of all features used by this plugin
 #[no_mangle]
-pub extern fn describe() -> u32 {
+pub extern fn describe() -> u64 {
     feature::TEST | hook::VOICE_STATE_UPDATE
 }
 
