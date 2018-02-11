@@ -1,7 +1,6 @@
 [package]
-name = "common_void"
+name = "common_playing"
 version = "0.1.0"
 authors = ["Noah Shuart <shuart.noah@gmail.com>"]
 
 [dependencies]
-libloading = "0.4"

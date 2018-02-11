@@ -1,7 +1,9 @@
 [package]
-name = "common_void"
+name = "command_allplaying"
 version = "0.1.0"
 authors = ["Noah Shuart <shuart.noah@gmail.com>"]
 
 [dependencies]
-libloading = "0.4"
+
+[lib]
+crate-type = ["dylib"]

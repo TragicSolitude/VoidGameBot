@@ -14,7 +14,9 @@ build-release:
 	done
 
 run: build
-	cargo run
+	LD_LIBRARY_PATH=$$(rustc --print sysroot)/lib:$$LD_LIBRARY_PATH
+	cargo +stable run
 
 run-release: build-release
-	cargo run --release
+	LD_LIBRARY_PATH=$$(rustc --print sysroot)/lib:$$LD_LIBRARY_PATH
+	cargo +stable run --release

@@ -3,15 +3,13 @@ extern crate regex;
 extern crate discord;
 extern crate common_void;
 
-mod plugin;
-
 use libloading::{Library, Symbol};
 use std::{env, fs};
 use std::collections::HashMap;
 use discord::Discord;
 use discord::model::{Event, Message, ServerId, VoiceState};
-use plugin::Plugin;
 use common_void::{hook, filter};
+use common_void::plugin::Plugin;
 
 fn main() {
     let plugins = fs::read_dir("plugins/").unwrap();
@@ -29,6 +27,12 @@ fn main() {
         let lib = Library::new(plugin.path()).unwrap();
 
         libs.insert(key, Plugin::new(lib));
+    }
+
+    for plugin in libs.values() {
+        if plugin.description & hook::PLUGIN_LOAD != 0 {
+            // Call hook for each plugin
+        }
     }
     
     let discord = Discord::from_bot_token(

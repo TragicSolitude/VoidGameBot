@@ -1,5 +1,3 @@
-extern crate libloading;
-
 use libloading::Library;
 
 /// 

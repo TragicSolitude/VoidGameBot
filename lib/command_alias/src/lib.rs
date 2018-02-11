@@ -52,7 +52,7 @@ pub extern fn main(_discord: &Discord, _message: &Message, args: Vec<String>) ->
 
 #[no_mangle]
 pub extern fn filter_before_plugin_lookup(command: String) -> String {
-    let mut lock = match ALIASES.lock() {
+    let lock = match ALIASES.lock() {
         Ok(aliases) => aliases,
         Err(_) => return command
     };

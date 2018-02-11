@@ -25,6 +25,83 @@ pub extern fn describe() -> u64 {
     feature::TEST | hook::VOICE_STATE_UPDATE
 }
 
+fn get_user_server_id(discord: &Discord, user_id: &UserId) -> Result<ServerId, u16> {
+    let state = match CHANNEL_CURSTATE.lock() {
+        Ok(state) => state,
+        Err(_) => return Err(201)
+    };
+    
+    // Figure out what server the user is in
+    match state.get(user_id) {
+        Some(channel_id) => {
+            match discord.get_channel(*channel_id) {
+                Ok(Channel::Public(channel)) => {
+                    return Ok(channel.server_id)
+                },
+                Ok(_) => {
+                    println!("[ERR; PLY]   User is not in a public channel");
+                    return Err(402);
+                }
+                Err(err) => {
+                    println!("[ERR; PLY]   Error getting channel info; {:?}", err);
+                    return Err(401);
+                }
+            }
+        }
+        None => return Err(300)
+    }
+}
+
+/// Creates a new managed channel and returns the new channel id if successful
+/// or it returns the existing channel id if a managed channel already exists
+/// with the same name. In the case of failure this function returns None
+fn create_managed_channel(discord: &Discord, user_id: &UserId, name: String) -> Result<ChannelId, u16> {
+    let mut lock = match CHANNELS.lock() {
+        Ok(channels) => channels,
+        Err(_) => return Err(200)
+    };
+
+    let mut channel_id: Result<ChannelId, u16> = Err(404);
+    for channel in lock.values() {
+        if channel.name == name {
+            channel_id = Ok(channel.id);
+            break;
+        }
+    }
+
+    match channel_id {
+        Ok(_) => {}
+        Err(_) => {
+            println!("[CMD; PLY]    {}", "New Channel");
+
+            let server_id = match get_user_server_id(discord, user_id) {
+                Ok(id) => id,
+                Err(_) => {
+                    println!("[CMD; PLY]    Could not get user's current server id");
+                    return Err(450)
+                }
+            };
+
+            match discord.create_channel(server_id, &name, ChannelType::Voice) {
+                Ok(Channel::Public(channel)) => {
+                    lock.insert(channel.id, ManagedChannel::new(channel.id, name));
+                    channel_id = Ok(channel.id);
+                },
+                Ok(_) => {
+                    println!("[ERR; PLY]    Incorrect channel type created");
+                    return Err(403);
+                }
+                Err(err) => {
+                    println!("[ERR; PLY]    Could not create channel; {:?}", err);
+                    return Err(400);
+                }
+            }
+        }
+    }
+
+    channel_id
+}
+
 /// Will create a new channel managed by the bot with the name given in the
 /// first argument. This will just move the user into said channel if it already
 /// exists and is managed. If it exists and isn't managed by the bot it will
@@ -55,88 +132,74 @@ pub extern fn main(discord: &Discord, message: &Message, args: Vec<String>) -> u
         return 100;
     }
 
-    let mut lock = match CHANNELS.lock() {
-        Ok(channels) => channels,
-        Err(_) => return 200
-    };
-    let state = match CHANNEL_CURSTATE.lock() {
-        Ok(state) => state,
-        Err(_) => return 201
-    };
-    let server_id: ServerId;
+    // let mut lock = match CHANNELS.lock() {
+    //     Ok(channels) => channels,
+    //     Err(_) => return 200
+    // };
+    // let state = match CHANNEL_CURSTATE.lock() {
+    //     Ok(state) => state,
+    //     Err(_) => return 201
+    // };
 
     println!("[CMD; PLY]    Message from User ID: {}", message.author.id);
 
-    // Figure out what server the user is in
-    match state.get(&message.author.id) {
-        Some(channel_id) => {
-            match discord.get_channel(*channel_id) {
-                Ok(Channel::Public(channel)) => {
-                    server_id = channel.server_id
-                },
-                Ok(_) => {
-                    println!("[ERR; PLY]   User is not in a public channel");
-                    return 402;
-                }
-                Err(err) => {
-                    println!("[ERR; PLY]   Error getting channel info; {:?}", err);
-                    return 401;
-                }
-            }
-        }
-        None => return 300
-    }
+    let server_id = match get_user_server_id(discord, &message.author.id) {
+        Ok(id) => id,
+        Err(code) => return code
+    };
 
     // Check if they are in a managed channel already
-    let mut is_managed = false;
-    for channel in lock.values() {
-        if channel.name == args[0] {
-            is_managed = true;
-            break;
-        }
-    }
+    // let mut is_managed = false;
+    // for channel in lock.values() {
+    //     if channel.name == args[0] {
+    //         is_managed = true;
+    //         break;
+    //     }
+    // }
 
-    let mut channel_id: Option<ChannelId> = None;
+    // let mut channel_id: Option<ChannelId> = None;
 
-    if is_managed {
-        println!("[CMD; PLY]    {}", "Existing channel");
+    // if is_managed {
+    //     println!("[CMD; PLY]    {}", "Existing channel");
         
-        // Have to repeat this shit to prevent borrowing lifetime problems
-        let mut matching: Option<&ManagedChannel> = None;
-        for channel in lock.values() {
-            if channel.name == args[0] {
-                matching = Some(channel);
-                break;
-            }
-        }
+    //     // Have to repeat this shit to prevent borrowing lifetime problems
+    //     let mut matching: Option<&ManagedChannel> = None;
+    //     for channel in lock.values() {
+    //         if channel.name == args[0] {
+    //             matching = Some(channel);
+    //             break;
+    //         }
+    //     }
 
-        match matching {
-            Some(channel) => channel_id = Some(channel.id),
-            None => {}
-        }
+    //     match matching {
+    //         Some(channel) => channel_id = Some(channel.id),
+    //         None => {}
+    //     }
 
-        // TODO Move user
-    } else {
-        println!("[CMD; PLY]    {}", "New Channel");
+    //     // TODO Move user
+    // } else {
+    //     println!("[CMD; PLY]    {}", "New Channel");
 
-        match discord.create_channel(server_id, &args[0], ChannelType::Voice) {
-            Ok(Channel::Public(channel)) => {
-                lock.insert(channel.id, ManagedChannel::new(channel.id, args[0].to_owned()));
-                channel_id = Some(channel.id);
-            },
-            Ok(_) => {
-                println!("[ERR; PLY]    Incorrect channel type created");
-                return 403
-            }
-            Err(err) => {
-                println!("[ERR; PLY]    Could not create channel; {:?}", err);
-                return 400;
-            }
-        }
-    }
+    //     match discord.create_channel(server_id, &args[0], ChannelType::Voice) {
+    //         Ok(Channel::Public(channel)) => {
+    //             lock.insert(channel.id, ManagedChannel::new(channel.id, args[0].to_owned()));
+    //             channel_id = Some(channel.id);
+    //         },
+    //         Ok(_) => {
+    //             println!("[ERR; PLY]    Incorrect channel type created");
+    //             return 403
+    //         }
+    //         Err(err) => {
+    //             println!("[ERR; PLY]    Could not create channel; {:?}", err);
+    //             return 400;
+    //         }
+    //     }
+    // }
 
-    match channel_id {
-        Some(channel_id) => {
+    let channel_name = args[0].clone();
+
+    match create_managed_channel(discord, &message.author.id, channel_name) {
+        Ok(channel_id) => {
             match discord.move_member_voice(server_id, message.author.id, channel_id) {
                 Ok(_) => {}
                 Err(err) => {
@@ -145,9 +208,8 @@ pub extern fn main(discord: &Discord, message: &Message, args: Vec<String>) -> u
                 }
             }
         }
-        None => {
-            println!("[ERR; PLY]   No channel to move user to");
-            return 404;
+        Err(code) => {
+            return code;
         }
     }
 
