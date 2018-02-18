@@ -5,6 +5,7 @@ authors = ["Noah Shuart <shuart.noah@gmail.com>"]
 
 [dependencies]
 lazy_static = "1.0"
+libloading = "0.4"
 
 [dependencies.discord]
 git = "https://github.com/SpaceManiac/discord-rs"
