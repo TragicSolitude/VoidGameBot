@@ -7,7 +7,7 @@ extern crate libloading;
 use discord::Discord;
 use discord::model::{Message, ServerId, ChannelId, UserId};
 use libloading::{Library, Symbol};
-use common_void::{feature, hook};
+use common_void::feature;
 
 lazy_static! {
     static ref LIB_COMMON: Library = Library::new("plugins/libcommon_playing.so").unwrap();
