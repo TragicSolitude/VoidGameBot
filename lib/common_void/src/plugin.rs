@@ -3,11 +3,12 @@ use libloading::Library;
 /// 
 pub struct Plugin {
     pub link: Library,
-    pub description: u64
+    pub description: u64,
+    pub name: String
 }
 
 impl Plugin {
-    pub fn new(lib: Library) -> Plugin {
+    pub fn new(name: String, lib: Library) -> Plugin {
         let plugin_desc: u64;
 
         {
@@ -23,7 +24,8 @@ impl Plugin {
 
         Plugin {
             link: lib,
-            description: plugin_desc
+            description: plugin_desc,
+            name: name
         }
     }
 }

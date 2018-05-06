@@ -19,6 +19,23 @@ pub extern fn describe() -> u64 {
     feature::TEST | filter::BEFORE_PLUGIN_LOOKUP
 }
 
+#[no_mangle]
+pub extern fn manual() -> String {
+    [
+        "Lets you alias commands",
+        "",
+        "Usage:",
+        "!alias pl playing",
+        "",
+        "This will allow pl to work as if it was its own command but it will instead",
+        "just be transformed into the playing command just before plugin lookup",
+        "",
+        "Error codes:",
+        "`100` - Invalid argument count",
+        "`200` - Error locking aliases map",
+    ].join("\n")
+}
+
 /// Lets you alias commands
 ///
 /// Usage:

@@ -15,6 +15,7 @@ fn main() {
     let plugins = fs::read_dir("plugins/").unwrap();
     let mut libs: HashMap<String, Plugin> = HashMap::new();
 
+    // TODO Setup enforced load order somehow
     for plugin in plugins {
         let plugin = plugin.unwrap();
         let mut key = plugin.file_name().into_string().unwrap();
@@ -26,12 +27,21 @@ fn main() {
 
         let lib = Library::new(plugin.path()).unwrap();
 
-        libs.insert(key, Plugin::new(lib));
+        libs.insert(key.clone(), Plugin::new(key, lib));
     }
 
+    // Once all plugins are loaded, run the "plugin load" hook for each plugin
+    // that was loaded
     for plugin in libs.values() {
         if plugin.description & hook::PLUGIN_LOAD != 0 {
             // Call hook for each plugin
+            for passable in libs.values() {
+                let sym: Symbol<extern fn(&Plugin) -> u16> = unsafe {
+                    plugin.link.get(b"hook_plugin_load").unwrap()
+                };
+
+                sym(passable);
+            }
         }
     }
     
@@ -84,7 +94,7 @@ fn main() {
                 let command = &command;
 
                 // filter_before_plugin_lookup
-                let key = format!("{}{}", "libcommand_", command);
+                let key = format!("libcommand_{}", command);
 
                 println!("[REQ; KEY]    {}; {}", command, key);
 
