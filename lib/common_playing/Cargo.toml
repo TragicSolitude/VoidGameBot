@@ -7,7 +7,7 @@ authors = ["Noah Shuart <shuart.noah@gmail.com>"]
 lazy_static = "1.0"
 
 [dependencies.discord]
-git = "https://github.com/SpaceManiac/discord-rs"
+git = "https://github.com/TragicSolitude/discord-rs.git"
 
 [dependencies.common_void]
 path = "../common_void"
